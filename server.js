@@ -1,27 +1,33 @@
-var express = require("express");
-var passport = require("passport");
-var Strategy = require("passport-local").Strategy;
-var db = require("./db");
+const express = require("express");
+const expressSession = require("express-session");
+const passport = require("passport");
+const Strategy = require("passport-local").Strategy;
+const db = require("./db");
+
+const morgan = require("morgan");
+const cookieParser = require("cookie-parser");
+const bodyParser = require("body-parser");
+const connectEnsureLogin = require("connect-ensure-login");
 
 // Configure the local strategy for use by Passport.
 //
 // The local strategy require a `verify` function which receives the credentials
 // (`username` and `password`) submitted by the user.  The function must verify
-// that the password is correct and then invoke `cb` with a user object, which
+// that the password is correct and then invoke `done` with a user object, which
 // will be set at `req.user` in route handlers after authentication.
 passport.use(
-  new Strategy(function(username, password, cb) {
+  new Strategy(function(username, password, done) {
     db.users.findByUsername(username, function(err, user) {
       if (err) {
-        return cb(err);
+        return done(err);
       }
       if (!user) {
-        return cb(null, false);
+        return done(null, false);
       }
       if (user.password != password) {
-        return cb(null, false);
+        return done(null, false);
       }
-      return cb(null, user);
+      return done(null, user);
     });
   })
 );
@@ -33,16 +39,16 @@ passport.use(
 // typical implementation of this is as simple as supplying the user ID when
 // serializing, and querying the user record by ID from the database when
 // deserializing.
-passport.serializeUser(function(user, cb) {
-  cb(null, user.id);
+passport.serializeUser(function(user, done) {
+  done(null, user.id);
 });
 
-passport.deserializeUser(function(id, cb) {
+passport.deserializeUser(function(id, done) {
   db.users.findById(id, function(err, user) {
     if (err) {
-      return cb(err);
+      return done(err);
     }
-    cb(null, user);
+    done(null, user);
   });
 });
 
@@ -55,11 +61,11 @@ app.set("view engine", "ejs");
 
 // Use application-level middleware for common functionality, including
 // logging, parsing, and session handling.
-app.use(require("morgan")("combined"));
-app.use(require("cookie-parser")());
-app.use(require("body-parser").urlencoded({ extended: true }));
-app.use(
-  require("express-session")({
+app.use(morgan("tiny"));
+app.use(cookieParser());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(expressSession(
+  {
     secret: "keyboard cat",
     resave: false,
     saveUninitialized: false
@@ -80,8 +86,7 @@ app.get("/login", function(req, res) {
   res.render("login");
 });
 
-app.post(
-  "/login",
+app.post("/login",
   passport.authenticate("local", { failureRedirect: "/login" }),
   function(req, res) {
     res.redirect("/");
@@ -93,11 +98,10 @@ app.get("/logout", function(req, res) {
   res.redirect("/");
 });
 
-app.get("/profile", require("connect-ensure-login").ensureLoggedIn(), function(
-  req,
-  res
-) {
-  res.render("profile", { user: req.user });
+app.get("/profile",
+  connectEnsureLogin.ensureLoggedIn(),
+  function(req, res) {
+    res.render("profile", { user: req.user });
 });
 
-app.listen(3000);
+app.listen(8000, ()=>console.log("Started on 8000"));
